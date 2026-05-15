@@ -9,13 +9,13 @@
       "position": [240, 300],
       "parameters": {
         "formTitle": "YieldReport Podcast Generator",
-        "formDescription": "Start a new podcast episode from a YieldReport PDF on Google Drive.",
+        "formDescription": "Start a new podcast episode from a YieldReport PDF on SharePoint.",
         "formFields": {
           "values": [
             {
-              "fieldLabel": "Google Drive File ID",
+              "fieldLabel": "SharePoint File ID",
               "fieldType": "text",
-              "placeholder": "e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+              "placeholder": "Paste the SharePoint item ID of the source PDF",
               "requiredField": true
             },
             {
@@ -32,23 +32,28 @@
     },
     {
       "id": "podcast-n8n-0002",
-      "name": "Download PDF from Drive",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "name": "Get PDF from SharePoint",
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [460, 300],
       "parameters": {
-        "operation": "download",
-        "fileId": {
+        "resource": "file",
+        "operation": "getContent",
+        "siteId": {
           "__rl": true,
-          "value": "={{ $json['Google Drive File ID'] }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "options": {}
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json['SharePoint File ID'] }}",
+          "mode": "id"
+        }
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
@@ -73,7 +78,7 @@
       "position": [900, 300],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const extractedText = $input.first().json.extractedText || '';\nconst fileId = $('Podcast Trigger').first().json['Google Drive File ID'];\nconst rawDate = $('Podcast Trigger').first().json['Episode Date'];\nconst episodeDate = rawDate && rawDate.trim() ? rawDate.trim() : new Date().toISOString().slice(0, 10);\n\nif (!extractedText || extractedText.length < 100) {\n  throw new Error('PDF extraction returned too little text. Check that the PDF is not image-only (scanned).');\n}\n\nconst prompt = `You are writing a podcast script for YieldReport's daily fixed income brief.\n\nAUDIENCE\nSophisticated Australian investors: SMSF trustees, financial advisers, corporate treasurers, fund managers, super fund staff. They know what a basis point is. They know what hybrids and term deposits are. Do not explain basics.\n\nTONE\nAuthoritative, concise, Reuters-meets-Bloomberg. No hype. No filler phrases (\"In this episode we'll explore...\"). No conversational throat-clearing. Lead with substance.\n\nLENGTH\nTarget 1,500 words. Hard floor 1,300, hard ceiling 1,650. This maps to roughly 10 minutes of spoken audio at 150 wpm.\n\nSTRUCTURE\n1. Cold open with the single most important development from the source document — one sentence stating what happened.\n2. One-paragraph context for that lead story.\n3. Sectioned coverage of the relevant areas, only those present in the source: cash rates, term deposits, government bonds, corporate bonds, hybrids, managed funds. Skip any area the source doesn't cover. Don't fabricate coverage.\n4. Specific numbers throughout — yields, bps moves, issue sizes, coupon rates, maturity dates. Numbers are the value-add.\n5. Close with one sentence on what to watch tomorrow or this week.\n\nFORMATTING RULES (CRITICAL — output goes directly to TTS)\n- Output only the words the narrator will read. No stage directions. No speaker labels. No \"[pause]\" or \"[music]\" markers.\n- No markdown. No bold. No headers. No bullet points. Plain prose only.\n- Spell out numbers that are awkward when read: \"twenty-five basis points\" not \"25bps\" — but keep precise figures like \"4.35%\" as digits because TTS handles them correctly.\n- Write out acronyms on first use: \"Reserve Bank of Australia (RBA)\" then \"RBA\" thereafter.\n- Use full sentences. No sentence fragments. TTS prosody depends on it.\n- End every sentence with proper terminal punctuation. No trailing commas at section breaks.\n\nDO NOT\n- Make up numbers, names, or events not in the source document.\n- Recommend buying or selling specific securities. Report; don't advise.\n- Use phrases like \"as our listeners know\" or \"stay tuned.\"\n\nSOURCE DOCUMENT:\n${extractedText}\n\nOutput the script now. Begin immediately with the cold open. No preamble, no \"Here is the script:\" — just the script itself.`;\n\nreturn [{ json: { prompt, fileId, episodeDate, extractedTextLength: extractedText.length } }];"
+        "jsCode": "const extractedText = $input.first().json.extractedText || '';\nconst fileId = $('Podcast Trigger').first().json['SharePoint File ID'];\nconst rawDate = $('Podcast Trigger').first().json['Episode Date'];\nconst episodeDate = rawDate && rawDate.trim() ? rawDate.trim() : new Date().toISOString().slice(0, 10);\n\nif (!extractedText || extractedText.length < 100) {\n  throw new Error('PDF extraction returned too little text. Check that the PDF is not image-only (scanned).');\n}\n\nconst prompt = `You are writing a podcast script for YieldReport's daily fixed income brief.\n\nAUDIENCE\nSophisticated Australian investors: SMSF trustees, financial advisers, corporate treasurers, fund managers, super fund staff. They know what a basis point is. They know what hybrids and term deposits are. Do not explain basics.\n\nTONE\nAuthoritative, concise, Reuters-meets-Bloomberg. No hype. No filler phrases (\"In this episode we'll explore...\"). No conversational throat-clearing. Lead with substance.\n\nLENGTH\nTarget 1,500 words. Hard floor 1,300, hard ceiling 1,650. This maps to roughly 10 minutes of spoken audio at 150 wpm.\n\nSTRUCTURE\n1. Cold open with the single most important development from the source document — one sentence stating what happened.\n2. One-paragraph context for that lead story.\n3. Sectioned coverage of the relevant areas, only those present in the source: cash rates, term deposits, government bonds, corporate bonds, hybrids, managed funds. Skip any area the source doesn't cover. Don't fabricate coverage.\n4. Specific numbers throughout — yields, bps moves, issue sizes, coupon rates, maturity dates. Numbers are the value-add.\n5. Close with one sentence on what to watch tomorrow or this week.\n\nFORMATTING RULES (CRITICAL — output goes directly to TTS)\n- Output only the words the narrator will read. No stage directions. No speaker labels. No \"[pause]\" or \"[music]\" markers.\n- No markdown. No bold. No headers. No bullet points. Plain prose only.\n- Spell out numbers that are awkward when read: \"twenty-five basis points\" not \"25bps\" — but keep precise figures like \"4.35%\" as digits because TTS handles them correctly.\n- Write out acronyms on first use: \"Reserve Bank of Australia (RBA)\" then \"RBA\" thereafter.\n- Use full sentences. No sentence fragments. TTS prosody depends on it.\n- End every sentence with proper terminal punctuation. No trailing commas at section breaks.\n\nDO NOT\n- Make up numbers, names, or events not in the source document.\n- Recommend buying or selling specific securities. Report; don't advise.\n- Use phrases like \"as our listeners know\" or \"stay tuned.\"\n\nSOURCE DOCUMENT:\n${extractedText}\n\nOutput the script now. Begin immediately with the cold open. No preamble, no \"Here is the script:\" — just the script itself.`;\n\nreturn [{ json: { prompt, fileId, episodeDate, extractedTextLength: extractedText.length } }];"
       }
     },
     {
@@ -86,8 +91,6 @@
       "parameters": {
         "method": "POST",
         "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -157,7 +160,7 @@
       "position": [1560, 300],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const item = $input.first().json;\nconst script = item.script || '';\nconst wordCount = script.trim().split(/\\s+/).filter(Boolean).length;\n\nif (wordCount < 1300) {\n  throw new Error(`Script too short: ${wordCount} words (minimum 1300). Check Gemini response or prompt.`);\n}\nif (wordCount > 1650) {\n  throw new Error(`Script too long: ${wordCount} words (maximum 1650). Check Gemini response or prompt.`);\n}\n\n// Check no markdown artifacts\nif (/^#{1,6} /m.test(script)) {\n  throw new Error('Script contains markdown headers. Gemini did not follow formatting rules.');\n}\nif (/\\*\\*.*\\*\\*/s.test(script)) {\n  throw new Error('Script contains markdown bold. Gemini did not follow formatting rules.');\n}\n\nreturn [{ json: { ...item, wordCount } }];"
+        "jsCode": "const item = $input.first().json;\nconst script = item.script || '';\nconst wordCount = script.trim().split(/\\s+/).filter(Boolean).length;\n\nif (wordCount < 1300) {\n  throw new Error(`Script too short: ${wordCount} words (minimum 1300). Check Gemini response or prompt.`);\n}\nif (wordCount > 1650) {\n  throw new Error(`Script too long: ${wordCount} words (maximum 1650). Check Gemini response or prompt.`);\n}\n\nif (/^#{1,6} /m.test(script)) {\n  throw new Error('Script contains markdown headers. Gemini did not follow formatting rules.');\n}\nif (/\\*\\*.*\\*\\*/s.test(script)) {\n  throw new Error('Script contains markdown bold. Gemini did not follow formatting rules.');\n}\n\nreturn [{ json: { ...item, wordCount } }];"
       }
     },
     {
@@ -349,7 +352,7 @@
       "position": [3540, 300],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const fs = require('fs');\nconst item = $input.first();\nconst chunkIndex = item.json.chunkIndex !== undefined ? item.json.chunkIndex : ($workflow.staticData.savedChunks || 0);\n\n// Extract request-id from response headers\nconst headers = item.json.headers || {};\nconst requestId = headers['request-id'] || headers['x-request-id'] || '';\n\n// Update rolling previousRequestIds (last 3)\nif (!$workflow.staticData.previousRequestIds) $workflow.staticData.previousRequestIds = [];\nif (requestId) {\n  $workflow.staticData.previousRequestIds.push(requestId);\n  if ($workflow.staticData.previousRequestIds.length > 3) {\n    $workflow.staticData.previousRequestIds.shift();\n  }\n}\n\n// Track total chars processed\nconst chunkText = item.json.text || '';\n$workflow.staticData.totalElevenLabsChars = ($workflow.staticData.totalElevenLabsChars || 0) + chunkText.length;\n\n// Save binary to /tmp\nconst binaryData = item.binary && item.binary.data ? item.binary.data.data : null;\nif (!binaryData) throw new Error(`No binary audio data for chunk ${chunkIndex}`);\n\nconst audioBuffer = Buffer.from(binaryData, 'base64');\nconst chunkPath = `/tmp/chunk_${chunkIndex}.mp3`;\nfs.writeFileSync(chunkPath, audioBuffer);\n\n$workflow.staticData.savedChunks = ($workflow.staticData.savedChunks || 0) + 1;\n\nreturn [{ json: { chunkIndex, requestId, savedPath: chunkPath, chunkTextLength: chunkText.length } }];"
+        "jsCode": "const fs = require('fs');\nconst item = $input.first();\nconst chunkIndex = item.json.chunkIndex !== undefined ? item.json.chunkIndex : ($workflow.staticData.savedChunks || 0);\n\nconst headers = item.json.headers || {};\nconst requestId = headers['request-id'] || headers['x-request-id'] || '';\n\nif (!$workflow.staticData.previousRequestIds) $workflow.staticData.previousRequestIds = [];\nif (requestId) {\n  $workflow.staticData.previousRequestIds.push(requestId);\n  if ($workflow.staticData.previousRequestIds.length > 3) {\n    $workflow.staticData.previousRequestIds.shift();\n  }\n}\n\nconst chunkText = item.json.text || '';\n$workflow.staticData.totalElevenLabsChars = ($workflow.staticData.totalElevenLabsChars || 0) + chunkText.length;\n\nconst binaryData = item.binary && item.binary.data ? item.binary.data.data : null;\nif (!binaryData) throw new Error(`No binary audio data for chunk ${chunkIndex}`);\n\nconst audioBuffer = Buffer.from(binaryData, 'base64');\nconst chunkPath = `/tmp/chunk_${chunkIndex}.mp3`;\nfs.writeFileSync(chunkPath, audioBuffer);\n\n$workflow.staticData.savedChunks = ($workflow.staticData.savedChunks || 0) + 1;\n\nreturn [{ json: { chunkIndex, requestId, savedPath: chunkPath, chunkTextLength: chunkText.length } }];"
       }
     },
     {
@@ -360,7 +363,7 @@
       "position": [3100, 520],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const chunkCount = $workflow.staticData.chunkCount || 0;\nconst introPath = $env.INTRO_AUDIO_PATH || '/assets/intro.mp3';\nconst outroPath = $env.OUTRO_AUDIO_PATH || '/assets/outro.mp3';\n\nconst lines = [\n  `file '${introPath}'`,\n  ...Array.from({ length: chunkCount }, (_, i) => `file '/tmp/chunk_${i}.mp3'`),\n  `file '${outroPath}'`,\n];\n\nconst concatList = lines.join('\\n');\n\nreturn [{ json: { concatList, chunkCount } }];"
+        "jsCode": "const chunkCount = $workflow.staticData.chunkCount || 0;\nconst introPath = $env.INTRO_AUDIO_PATH || '/assets/intro.mp3';\nconst outroPath = $env.OUTRO_AUDIO_PATH || '/assets/outro.mp3';\n\nconst lines = [\n  `file '${introPath}'`,\n  ...Array.from({ length: chunkCount }, (_, i) => `file '/tmp/chunk_${i}.mp3'`),\n  `file '${outroPath}'`,\n];\n\nreturn [{ json: { concatList: lines.join('\\n'), chunkCount } }];"
       }
     },
     {
@@ -375,29 +378,29 @@
     },
     {
       "id": "podcast-n8n-0020",
-      "name": "Create Drive Subfolder",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "name": "Create SharePoint Subfolder",
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [3540, 520],
       "parameters": {
-        "operation": "createFolder",
-        "folderName": "={{ $workflow.staticData.episodeDate || new Date().toISOString().slice(0,10) }}",
-        "driveId": {
+        "resource": "folder",
+        "operation": "create",
+        "siteId": {
           "__rl": true,
-          "value": "myDrive",
-          "mode": "list"
-        },
-        "folderId": {
-          "__rl": true,
-          "value": "={{ $env.OUTPUT_DRIVE_FOLDER_ID }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "options": {}
+        "name": "={{ $workflow.staticData.episodeDate || new Date().toISOString().slice(0,10) }}",
+        "parentId": {
+          "__rl": true,
+          "value": "={{ $env.SHAREPOINT_OUTPUT_FOLDER_ID }}",
+          "mode": "id"
+        }
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
@@ -409,7 +412,7 @@
       "position": [3760, 520],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const folderId = $input.first().json.id;\n$workflow.staticData.driveFolderId = folderId;\nreturn [{ json: { driveFolderId: folderId } }];"
+        "jsCode": "const folderId = $input.first().json.id;\n$workflow.staticData.sharepointFolderId = folderId;\nreturn [{ json: { sharepointFolderId: folderId } }];"
       }
     },
     {
@@ -420,36 +423,36 @@
       "position": [3980, 520],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const fs = require('fs');\nconst mp3Buffer = fs.readFileSync('/tmp/episode.mp3');\nconst { execSync } = require('child_process');\n\n// Get duration in seconds via ffprobe\nlet durationSeconds = 0;\ntry {\n  const durStr = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 /tmp/episode.mp3 2>/dev/null`).toString().trim();\n  durationSeconds = parseFloat(durStr) || 0;\n} catch(e) { /* ffprobe optional */ }\n\n$workflow.staticData.durationSeconds = durationSeconds;\n\nreturn [{\n  json: { durationSeconds },\n  binary: {\n    episode: {\n      data: mp3Buffer.toString('base64'),\n      mimeType: 'audio/mpeg',\n      fileName: 'episode.mp3'\n    }\n  }\n}];"
+        "jsCode": "const fs = require('fs');\nconst mp3Buffer = fs.readFileSync('/tmp/episode.mp3');\nconst { execSync } = require('child_process');\n\nlet durationSeconds = 0;\ntry {\n  const durStr = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 /tmp/episode.mp3 2>/dev/null`).toString().trim();\n  durationSeconds = parseFloat(durStr) || 0;\n} catch(e) { /* ffprobe optional */ }\n\n$workflow.staticData.durationSeconds = durationSeconds;\n\nreturn [{\n  json: { durationSeconds },\n  binary: {\n    episode: {\n      data: mp3Buffer.toString('base64'),\n      mimeType: 'audio/mpeg',\n      fileName: 'episode.mp3'\n    }\n  }\n}];"
       }
     },
     {
       "id": "podcast-n8n-0023",
       "name": "Upload Source PDF",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [4200, 520],
       "parameters": {
+        "resource": "file",
         "operation": "upload",
-        "name": "source.pdf",
-        "driveId": {
+        "siteId": {
           "__rl": true,
-          "value": "myDrive",
-          "mode": "list"
-        },
-        "folderId": {
-          "__rl": true,
-          "value": "={{ $workflow.staticData.driveFolderId }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "binaryData": true,
-        "binaryPropertyName": "={{ $('Download PDF from Drive').first().binary ? 'data' : 'data' }}",
-        "options": {}
+        "parentId": {
+          "__rl": true,
+          "value": "={{ $workflow.staticData.sharepointFolderId }}",
+          "mode": "id"
+        },
+        "fileName": "source.pdf",
+        "binaryPropertyName": "data",
+        "binaryData": true
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
@@ -461,126 +464,126 @@
       "position": [4420, 520],
       "parameters": {
         "language": "javaScript",
-        "jsCode": "const script = $workflow.staticData.script || '';\nconst chunkCount = $workflow.staticData.chunkCount || 0;\nconst driveFolderId = $workflow.staticData.driveFolderId;\n\n// Build script_chunks.json content\nconst chunks = Array.from({ length: chunkCount }, (_, i) => ({ chunkIndex: i, requestId: '' }));\nconst chunksJson = JSON.stringify(chunks, null, 2);\n\n// Build metadata.json content\nconst now = new Date().toISOString();\nconst durationSeconds = $workflow.staticData.durationSeconds || 0;\nconst durationMin = Math.floor(durationSeconds / 60);\nconst durationSec = Math.round(durationSeconds % 60);\n\n// ElevenLabs cost estimate: ~$0.0002 AUD per char on Pro tier\nconst totalChars = $workflow.staticData.totalElevenLabsChars || 0;\nconst elevenLabsCostAud = (totalChars * 0.0002).toFixed(2);\nconst geminiCostAud = '0.01';\nconst totalCostAud = (parseFloat(elevenLabsCostAud) + parseFloat(geminiCostAud)).toFixed(2);\n\nconst metadata = {\n  timestamp: now,\n  episodeDate: $workflow.staticData.episodeDate,\n  sourcePdfFileId: $workflow.staticData.fileId,\n  scriptWordCount: $workflow.staticData.wordCount,\n  chunkCount,\n  totalElevenLabsChars: totalChars,\n  voiceId: $env.ELEVENLABS_VOICE_ID,\n  modelId: 'eleven_turbo_v2_5',\n  scriptModel: $workflow.staticData.modelUsed,\n  durationSeconds: Math.round(durationSeconds),\n  durationFormatted: `${durationMin}m ${durationSec}s`,\n  estimatedCostAud: parseFloat(totalCostAud),\n  geminiCostAud: parseFloat(geminiCostAud),\n  elevenLabsCostAud: parseFloat(elevenLabsCostAud)\n};\n\nconst metadataJson = JSON.stringify(metadata, null, 2);\n\nreturn [{\n  json: { driveFolderId },\n  binary: {\n    scriptMd: {\n      data: Buffer.from(script).toString('base64'),\n      mimeType: 'text/markdown',\n      fileName: 'script.md'\n    },\n    chunksJson: {\n      data: Buffer.from(chunksJson).toString('base64'),\n      mimeType: 'application/json',\n      fileName: 'script_chunks.json'\n    },\n    metadataJson: {\n      data: Buffer.from(metadataJson).toString('base64'),\n      mimeType: 'application/json',\n      fileName: 'metadata.json'\n    }\n  }\n}];"
+        "jsCode": "const script = $workflow.staticData.script || '';\nconst chunkCount = $workflow.staticData.chunkCount || 0;\nconst sharepointFolderId = $workflow.staticData.sharepointFolderId;\n\nconst chunks = Array.from({ length: chunkCount }, (_, i) => ({ chunkIndex: i, requestId: '' }));\nconst chunksJson = JSON.stringify(chunks, null, 2);\n\nconst now = new Date().toISOString();\nconst durationSeconds = $workflow.staticData.durationSeconds || 0;\nconst durationMin = Math.floor(durationSeconds / 60);\nconst durationSec = Math.round(durationSeconds % 60);\n\nconst totalChars = $workflow.staticData.totalElevenLabsChars || 0;\nconst elevenLabsCostAud = (totalChars * 0.0002).toFixed(2);\nconst geminiCostAud = '0.01';\nconst totalCostAud = (parseFloat(elevenLabsCostAud) + parseFloat(geminiCostAud)).toFixed(2);\n\nconst metadata = {\n  timestamp: now,\n  episodeDate: $workflow.staticData.episodeDate,\n  sourcePdfFileId: $workflow.staticData.fileId,\n  scriptWordCount: $workflow.staticData.wordCount,\n  chunkCount,\n  totalElevenLabsChars: totalChars,\n  voiceId: $env.ELEVENLABS_VOICE_ID,\n  modelId: 'eleven_turbo_v2_5',\n  scriptModel: $workflow.staticData.modelUsed,\n  durationSeconds: Math.round(durationSeconds),\n  durationFormatted: `${durationMin}m ${durationSec}s`,\n  estimatedCostAud: parseFloat(totalCostAud),\n  geminiCostAud: parseFloat(geminiCostAud),\n  elevenLabsCostAud: parseFloat(elevenLabsCostAud)\n};\n\nconst metadataJson = JSON.stringify(metadata, null, 2);\n\nreturn [{\n  json: { sharepointFolderId },\n  binary: {\n    scriptMd: {\n      data: Buffer.from(script).toString('base64'),\n      mimeType: 'text/markdown',\n      fileName: 'script.md'\n    },\n    chunksJson: {\n      data: Buffer.from(chunksJson).toString('base64'),\n      mimeType: 'application/json',\n      fileName: 'script_chunks.json'\n    },\n    metadataJson: {\n      data: Buffer.from(metadataJson).toString('base64'),\n      mimeType: 'application/json',\n      fileName: 'metadata.json'\n    }\n  }\n}];"
       }
     },
     {
       "id": "podcast-n8n-0025",
       "name": "Upload Script MD",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [4640, 520],
       "parameters": {
+        "resource": "file",
         "operation": "upload",
-        "name": "script.md",
-        "driveId": {
+        "siteId": {
           "__rl": true,
-          "value": "myDrive",
-          "mode": "list"
-        },
-        "folderId": {
-          "__rl": true,
-          "value": "={{ $json.driveFolderId }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "binaryData": true,
+        "parentId": {
+          "__rl": true,
+          "value": "={{ $json.sharepointFolderId }}",
+          "mode": "id"
+        },
+        "fileName": "script.md",
         "binaryPropertyName": "scriptMd",
-        "options": {}
+        "binaryData": true
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
     {
       "id": "podcast-n8n-0026",
       "name": "Upload Chunks JSON",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [4860, 520],
       "parameters": {
+        "resource": "file",
         "operation": "upload",
-        "name": "script_chunks.json",
-        "driveId": {
+        "siteId": {
           "__rl": true,
-          "value": "myDrive",
-          "mode": "list"
-        },
-        "folderId": {
-          "__rl": true,
-          "value": "={{ $('Prepare Text Files').first().json.driveFolderId }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "binaryData": true,
+        "parentId": {
+          "__rl": true,
+          "value": "={{ $('Prepare Text Files').first().json.sharepointFolderId }}",
+          "mode": "id"
+        },
+        "fileName": "script_chunks.json",
         "binaryPropertyName": "chunksJson",
-        "options": {}
+        "binaryData": true
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
     {
       "id": "podcast-n8n-0027",
       "name": "Upload Episode MP3",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [5080, 520],
       "parameters": {
+        "resource": "file",
         "operation": "upload",
-        "name": "episode.mp3",
-        "driveId": {
+        "siteId": {
           "__rl": true,
-          "value": "myDrive",
-          "mode": "list"
-        },
-        "folderId": {
-          "__rl": true,
-          "value": "={{ $('Prepare Text Files').first().json.driveFolderId }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "binaryData": true,
+        "parentId": {
+          "__rl": true,
+          "value": "={{ $('Prepare Text Files').first().json.sharepointFolderId }}",
+          "mode": "id"
+        },
+        "fileName": "episode.mp3",
         "binaryPropertyName": "episode",
-        "options": {}
+        "binaryData": true
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
     {
       "id": "podcast-n8n-0028",
       "name": "Upload Metadata JSON",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.microsoftSharePoint",
+      "typeVersion": 1,
       "position": [5300, 520],
       "parameters": {
+        "resource": "file",
         "operation": "upload",
-        "name": "metadata.json",
-        "driveId": {
+        "siteId": {
           "__rl": true,
-          "value": "myDrive",
-          "mode": "list"
-        },
-        "folderId": {
-          "__rl": true,
-          "value": "={{ $('Prepare Text Files').first().json.driveFolderId }}",
+          "value": "={{ $env.SHAREPOINT_SITE_ID }}",
           "mode": "id"
         },
-        "binaryData": true,
+        "parentId": {
+          "__rl": true,
+          "value": "={{ $('Prepare Text Files').first().json.sharepointFolderId }}",
+          "mode": "id"
+        },
+        "fileName": "metadata.json",
         "binaryPropertyName": "metadataJson",
-        "options": {}
+        "binaryData": true
       },
       "credentials": {
-        "googleDriveOAuth2Api": {
+        "microsoftSharePointOAuth2Api": {
           "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Google Drive OAuth"
+          "name": "Microsoft SharePoint OAuth"
         }
       }
     },
@@ -608,16 +611,16 @@
         },
         "sendBody": true,
         "specifyBody": "string",
-        "body": "={{ (function() { const meta = JSON.parse(Buffer.from($('Prepare Text Files').first().binary.metadataJson.data, 'base64').toString()); const folderUrl = 'https://drive.google.com/drive/folders/' + $workflow.staticData.driveFolderId; return JSON.stringify({ channel: $env.SLACK_APPROVAL_CHANNEL_ID, text: ':white_check_mark: *Episode ready: ' + meta.episodeDate + '*\\nDrive folder: ' + folderUrl + '\\nDuration: ' + meta.durationFormatted + '\\nEst. cost: AUD $' + meta.estimatedCostAud + '\\nWord count: ' + meta.scriptWordCount + ' | Chunks: ' + meta.chunkCount }); })() }}",
+        "body": "={{ (function() { const meta = JSON.parse(Buffer.from($('Prepare Text Files').first().binary.metadataJson.data, 'base64').toString()); const folderUrl = $env.SHAREPOINT_SITE_URL + '/Shared%20Documents/Forms/AllItems.aspx?id=' + encodeURIComponent('/sites/' + $env.SHAREPOINT_SITE_NAME + '/Shared%20Documents/' + $env.SHAREPOINT_OUTPUT_FOLDER_PATH + '/' + meta.episodeDate); return JSON.stringify({ channel: $env.SLACK_APPROVAL_CHANNEL_ID, text: ':white_check_mark: *Episode ready: ' + meta.episodeDate + '*\\nSharePoint folder: ' + folderUrl + '\\nDuration: ' + meta.durationFormatted + '\\nEst. cost: AUD $' + meta.estimatedCostAud + '\\nWord count: ' + meta.scriptWordCount + ' | Chunks: ' + meta.chunkCount }); })() }}",
         "options": {}
       }
     }
   ],
   "connections": {
     "Podcast Trigger": {
-      "main": [[{"node": "Download PDF from Drive", "type": "main", "index": 0}]]
+      "main": [[{"node": "Get PDF from SharePoint", "type": "main", "index": 0}]]
     },
-    "Download PDF from Drive": {
+    "Get PDF from SharePoint": {
       "main": [[{"node": "Extract PDF Text", "type": "main", "index": 0}]]
     },
     "Extract PDF Text": {
@@ -672,9 +675,9 @@
       "main": [[{"node": "Write Files & FFmpeg", "type": "main", "index": 0}]]
     },
     "Write Files & FFmpeg": {
-      "main": [[{"node": "Create Drive Subfolder", "type": "main", "index": 0}]]
+      "main": [[{"node": "Create SharePoint Subfolder", "type": "main", "index": 0}]]
     },
-    "Create Drive Subfolder": {
+    "Create SharePoint Subfolder": {
       "main": [[{"node": "Store Folder ID", "type": "main", "index": 0}]]
     },
     "Store Folder ID": {

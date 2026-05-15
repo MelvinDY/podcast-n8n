@@ -18,12 +18,12 @@ Before the workflow can run end-to-end:
 | Item | Notes |
 |---|---|
 | n8n instance | Self-hosted or cloud. Needs FFmpeg installed (`apt install ffmpeg`). |
-| Google Drive OAuth credential | Set up in n8n credentials store. |
+| Microsoft SharePoint OAuth credential | Set up in n8n credentials store using your Microsoft 365 account. |
 | Slack bot | Create at api.slack.com/apps. Scopes: `chat:write`, `chat:write.public`. |
 | ElevenLabs account | Creator tier minimum ($22/mo, 100k chars). Pro ($99/mo) recommended for daily use. |
 | Intro audio | ~10s MP3 at 44.1kHz 128kbps: "This is the YieldReport daily brief." |
 | Outro audio | ~10s MP3 same spec: "That's the YieldReport brief. Visit yieldreport.com.au." |
-| Google Drive output folder | Create the parent `/YieldReport-Podcast/` folder and copy its ID. |
+| SharePoint output folder | Create a `YieldReport-Podcast` folder in SharePoint and copy its item ID. |
 
 ## Setup
 
@@ -37,35 +37,50 @@ ELEVENLABS_API_KEY
 ELEVENLABS_VOICE_ID
 SLACK_BOT_TOKEN
 SLACK_APPROVAL_CHANNEL_ID
-OUTPUT_DRIVE_FOLDER_ID
+SHAREPOINT_SITE_ID
+SHAREPOINT_SITE_URL
+SHAREPOINT_SITE_NAME
+SHAREPOINT_OUTPUT_FOLDER_ID
+SHAREPOINT_OUTPUT_FOLDER_PATH
 INTRO_AUDIO_PATH
 OUTRO_AUDIO_PATH
 ```
 
-### 2. Add Google Drive OAuth credential
+### 2. Get your SharePoint IDs
 
-In n8n, go to **Credentials → New → Google Drive OAuth2 API**. Complete the OAuth flow. Note the credential ID — you'll need to replace `REPLACE_WITH_CREDENTIAL_ID` in the workflow JSON before importing.
+**Site ID** — run this in your browser console while on the SharePoint site:
+```javascript
+fetch("/_api/site/id").then(r=>r.json()).then(d=>console.log(d.value))
+```
 
-### 3. Update credential IDs in workflow.json
+**Output folder ID** — navigate to your `YieldReport-Podcast` folder in SharePoint → click **...** (more options) → **Details** → copy the **ID** field at the bottom.
 
-Search `workflow.json` for `REPLACE_WITH_CREDENTIAL_ID` and replace with your actual Google Drive credential ID. There are 5 occurrences (one per Google Drive node).
+**SharePoint File ID** (for each source PDF) — same process: open the PDF's folder → **...** → **Details** → copy the **ID**.
 
-### 4. Import the workflow
+### 3. Add Microsoft SharePoint OAuth credential in n8n
+
+Go to **Credentials → New → Microsoft SharePoint OAuth2 API**. Sign in with your Microsoft 365 account. Note the credential ID — you'll need to replace `REPLACE_WITH_CREDENTIAL_ID` in the workflow JSON before importing.
+
+### 4. Update credential IDs in workflow.json
+
+Search `workflow.json` for `REPLACE_WITH_CREDENTIAL_ID` and replace with your SharePoint credential ID. There are 6 occurrences (one per SharePoint node).
+
+### 5. Import the workflow
 
 In n8n, go to **Workflows → Import from File** and select `workflow.json`.
 
-### 5. Place audio assets on the n8n server
+### 6. Place audio assets on the n8n server
 
 Copy `intro.mp3` and `outro.mp3` to the paths you set in `INTRO_AUDIO_PATH` and `OUTRO_AUDIO_PATH`. On Docker: mount a volume or copy files into the container.
 
-### 6. Activate the workflow
+### 7. Activate the workflow
 
 Toggle the workflow to active. The form trigger will become available.
 
 ## Running an episode
 
 1. Open the form trigger URL (shown in n8n when workflow is active)
-2. Paste the Google Drive file ID of the source PDF
+2. Paste the SharePoint item ID of the source PDF (get it via **...** → **Details** on the file)
 3. Optionally set the episode date (defaults to today)
 4. Click Submit
 5. Wait for the Slack approval message (~30–60s for Gemini)
