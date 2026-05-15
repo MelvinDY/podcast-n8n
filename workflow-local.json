@@ -1,0 +1,371 @@
+{
+  "name": "yieldreport-podcast-local",
+  "nodes": [
+    {
+      "id": "local-0001",
+      "name": "Podcast Trigger (Local)",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "parameters": {
+        "formTitle": "YieldReport Podcast Generator (Local)",
+        "formDescription": "Provide the full path to a PDF on this machine to generate a podcast episode.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "PDF File Path",
+              "fieldType": "text",
+              "placeholder": "e.g. C:\\Users\\fores\\Downloads\\yieldreport-2026-05-15.pdf",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Episode Date",
+              "fieldType": "text",
+              "placeholder": "YYYY-MM-DD (leave blank for today)",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "webhookId": "yieldreport-podcast-local-trigger"
+    },
+    {
+      "id": "local-0002",
+      "name": "Read Local PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\n\nconst pdfPath = $input.first().json['PDF File Path'];\nconst rawDate = $input.first().json['Episode Date'];\nconst episodeDate = rawDate && rawDate.trim() ? rawDate.trim() : new Date().toISOString().slice(0, 10);\n\nif (!fs.existsSync(pdfPath)) {\n  throw new Error(`PDF not found: ${pdfPath}`);\n}\n\nconst pdfBuffer = fs.readFileSync(pdfPath);\nconst fileName = path.basename(pdfPath);\n\nreturn [{\n  json: { pdfPath, fileName, episodeDate },\n  binary: {\n    data: {\n      data: pdfBuffer.toString('base64'),\n      mimeType: 'application/pdf',\n      fileName\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "local-0003",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "destinationKey": "extractedText",
+        "options": {}
+      }
+    },
+    {
+      "id": "local-0004",
+      "name": "Build Gemini Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const extractedText = $input.first().json.extractedText || '';\nconst { pdfPath, fileName, episodeDate } = $input.first().json;\n\nif (!extractedText || extractedText.length < 100) {\n  throw new Error('PDF extraction returned too little text. Check that the PDF is not image-only (scanned).');\n}\n\nconst prompt = `You are writing a podcast script for YieldReport's daily fixed income brief.\n\nAUDIENCE\nSophisticated Australian investors: SMSF trustees, financial advisers, corporate treasurers, fund managers, super fund staff. They know what a basis point is. They know what hybrids and term deposits are. Do not explain basics.\n\nTONE\nAuthoritative, concise, Reuters-meets-Bloomberg. No hype. No filler phrases (\"In this episode we'll explore...\"). No conversational throat-clearing. Lead with substance.\n\nLENGTH\nTarget 1,500 words. Hard floor 1,300, hard ceiling 1,650. This maps to roughly 10 minutes of spoken audio at 150 wpm.\n\nSTRUCTURE\n1. Cold open with the single most important development from the source document — one sentence stating what happened.\n2. One-paragraph context for that lead story.\n3. Sectioned coverage of the relevant areas, only those present in the source: cash rates, term deposits, government bonds, corporate bonds, hybrids, managed funds. Skip any area the source doesn't cover. Don't fabricate coverage.\n4. Specific numbers throughout — yields, bps moves, issue sizes, coupon rates, maturity dates. Numbers are the value-add.\n5. Close with one sentence on what to watch tomorrow or this week.\n\nFORMATTING RULES (CRITICAL — output goes directly to TTS)\n- Output only the words the narrator will read. No stage directions. No speaker labels. No \"[pause]\" or \"[music]\" markers.\n- No markdown. No bold. No headers. No bullet points. Plain prose only.\n- Spell out numbers that are awkward when read: \"twenty-five basis points\" not \"25bps\" — but keep precise figures like \"4.35%\" as digits because TTS handles them correctly.\n- Write out acronyms on first use: \"Reserve Bank of Australia (RBA)\" then \"RBA\" thereafter.\n- Use full sentences. No sentence fragments. TTS prosody depends on it.\n- End every sentence with proper terminal punctuation. No trailing commas at section breaks.\n\nDO NOT\n- Make up numbers, names, or events not in the source document.\n- Recommend buying or selling specific securities. Report; don't advise.\n- Use phrases like \"as our listeners know\" or \"stay tuned.\"\n\nSOURCE DOCUMENT:\n${extractedText}\n\nOutput the script now. Begin immediately with the cold open. No preamble, no \"Here is the script:\" — just the script itself.`;\n\nreturn [{ json: { prompt, pdfPath, fileName, episodeDate } }];"
+      }
+    },
+    {
+      "id": "local-0005",
+      "name": "Generate Script (Gemini)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-goog-api-key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ JSON.stringify({ contents: [{ role: 'user', parts: [{ text: $json.prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: 0 } } }) }}",
+        "options": { "timeout": 120000 }
+      }
+    },
+    {
+      "id": "local-0006",
+      "name": "Parse Script Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1340, 300],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-script",
+              "name": "script",
+              "value": "={{ $json.candidates[0].content.parts[0].text }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-episode-date",
+              "name": "episodeDate",
+              "value": "={{ $('Build Gemini Prompt').first().json.episodeDate }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-file-name",
+              "name": "fileName",
+              "value": "={{ $('Build Gemini Prompt').first().json.fileName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "local-0007",
+      "name": "Validate Script Length",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst script = item.script || '';\nconst wordCount = script.trim().split(/\\s+/).filter(Boolean).length;\n\nif (wordCount < 1300) throw new Error(`Script too short: ${wordCount} words (min 1300).`);\nif (wordCount > 1650) throw new Error(`Script too long: ${wordCount} words (max 1650).`);\nif (/^#{1,6} /m.test(script)) throw new Error('Script contains markdown headers.');\nif (/\\*\\*.*\\*\\*/s.test(script)) throw new Error('Script contains markdown bold.');\n\nconsole.log(`Script OK: ${wordCount} words`);\nreturn [{ json: { ...item, wordCount } }];"
+      }
+    },
+    {
+      "id": "local-0008",
+      "name": "Chunk Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const MAX_CHARS = 2500;\nconst item = $input.first().json;\nconst script = item.script;\n\nconst paragraphs = script.split(/\\n\\s*\\n/).map(p => p.trim()).filter(Boolean);\nconst chunks = [];\nlet current = '';\n\nfor (const para of paragraphs) {\n  if (current && (current.length + para.length + 2) > MAX_CHARS) {\n    chunks.push(current.trim());\n    current = '';\n  }\n  if (para.length > MAX_CHARS) {\n    const sentences = para.match(/[^.!?]+[.!?]+/g) || [para];\n    for (const sent of sentences) {\n      if (current && (current.length + sent.length + 1) > MAX_CHARS) {\n        chunks.push(current.trim());\n        current = '';\n      }\n      current += (current ? ' ' : '') + sent.trim();\n    }\n  } else {\n    current += (current ? '\\n\\n' : '') + para;\n  }\n}\nif (current.trim()) chunks.push(current.trim());\n\n$workflow.staticData.chunkCount = chunks.length;\n$workflow.staticData.episodeDate = item.episodeDate;\n$workflow.staticData.fileName = item.fileName;\n$workflow.staticData.wordCount = item.wordCount;\n$workflow.staticData.script = item.script;\n\nconsole.log(`Split into ${chunks.length} chunks`);\nreturn chunks.map((text, i) => ({ json: { chunkIndex: i, text, totalChunks: chunks.length } }));"
+      }
+    },
+    {
+      "id": "local-0009",
+      "name": "Validate Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst errors = [];\nfor (const item of items) {\n  const { chunkIndex, text } = item.json;\n  if (text.length > 4500) errors.push(`Chunk ${chunkIndex}: ${text.length} chars (max 4500).`);\n  if (!/[.?!]$/.test(text.trim())) errors.push(`Chunk ${chunkIndex} does not end with terminal punctuation.`);\n}\nif (errors.length > 0) throw new Error('Chunk validation failed:\\n' + errors.join('\\n'));\nreturn items;"
+      }
+    },
+    {
+      "id": "local-0010",
+      "name": "Init TTS State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "$workflow.staticData.previousRequestIds = [];\n$workflow.staticData.totalElevenLabsChars = 0;\n$workflow.staticData.savedChunks = 0;\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "local-0011",
+      "name": "Loop Over Chunks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2440, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "local-0012",
+      "name": "ElevenLabs TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.elevenlabs.io/v1/text-to-speech/{{ $env.ELEVENLABS_VOICE_ID }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "xi-api-key", "value": "={{ $env.ELEVENLABS_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Accept", "value": "audio/mpeg" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ JSON.stringify({ text: $json.text, model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.55, similarity_boost: 0.75, style: 0.10, use_speaker_boost: true }, previous_request_ids: $workflow.staticData.previousRequestIds || [] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data",
+              "fullResponse": true
+            }
+          },
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "local-0013",
+      "name": "Save Chunk & Update IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst os = require('os');\n\nconst item = $input.first();\nconst chunkIndex = item.json.chunkIndex !== undefined ? item.json.chunkIndex : ($workflow.staticData.savedChunks || 0);\n\nconst headers = item.json.headers || {};\nconst requestId = headers['request-id'] || headers['x-request-id'] || '';\n\nif (!$workflow.staticData.previousRequestIds) $workflow.staticData.previousRequestIds = [];\nif (requestId) {\n  $workflow.staticData.previousRequestIds.push(requestId);\n  if ($workflow.staticData.previousRequestIds.length > 3) $workflow.staticData.previousRequestIds.shift();\n}\n\nconst chunkText = item.json.text || '';\n$workflow.staticData.totalElevenLabsChars = ($workflow.staticData.totalElevenLabsChars || 0) + chunkText.length;\n\nconst binaryData = item.binary && item.binary.data ? item.binary.data.data : null;\nif (!binaryData) throw new Error(`No binary audio for chunk ${chunkIndex}`);\n\nconst chunkPath = path.join(os.tmpdir(), `chunk_${chunkIndex}.mp3`);\nfs.writeFileSync(chunkPath, Buffer.from(binaryData, 'base64'));\n\n$workflow.staticData.savedChunks = ($workflow.staticData.savedChunks || 0) + 1;\nconsole.log(`Saved chunk ${chunkIndex} → ${chunkPath}`);\n\nreturn [{ json: { chunkIndex, requestId, chunkPath } }];"
+      }
+    },
+    {
+      "id": "local-0014",
+      "name": "Write Concat List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 520],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst os = require('os');\n\nconst chunkCount = $workflow.staticData.chunkCount || 0;\nconst tmpDir = os.tmpdir();\nconst introPath = ($env.INTRO_AUDIO_PATH || '').replace(/\\\\/g, '/');\nconst outroPath = ($env.OUTRO_AUDIO_PATH || '').replace(/\\\\/g, '/');\n\nconst lines = [\n  `file '${introPath}'`,\n  ...Array.from({ length: chunkCount }, (_, i) => `file '${path.join(tmpDir, `chunk_${i}.mp3`).replace(/\\\\/g, '/')}'`),\n  `file '${outroPath}'`,\n];\n\nconst concatListPath = path.join(tmpDir, 'concat_list.txt');\nfs.writeFileSync(concatListPath, lines.join('\\n'), 'utf8');\nconsole.log(`Concat list written to ${concatListPath}`);\n\nreturn [{ json: { concatListPath, episodePath: path.join(tmpDir, 'episode.mp3') } }];"
+      }
+    },
+    {
+      "id": "local-0015",
+      "name": "FFmpeg Concat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 520],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\nconst path = require('path');\nconst os = require('os');\n\nconst concatListPath = $input.first().json.concatListPath;\nconst episodePath = path.join(os.tmpdir(), 'episode.mp3');\n\ntry {\n  execSync(`ffmpeg -y -f concat -safe 0 -i \"${concatListPath}\" -c:a libmp3lame -b:a 128k \"${episodePath}\"`, {\n    encoding: 'utf8',\n    timeout: 300000,\n    stdio: 'pipe'\n  });\n} catch(e) {\n  if (!fs.existsSync(episodePath)) {\n    throw new Error('FFmpeg failed: ' + (e.stderr || e.message));\n  }\n}\n\nconst stats = fs.statSync(episodePath);\nconsole.log(`Episode MP3 created: ${episodePath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);\n\nreturn [{ json: { episodePath } }];"
+      }
+    },
+    {
+      "id": "local-0016",
+      "name": "Save Output Locally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 520],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst os = require('os');\nconst { execSync } = require('child_process');\n\nconst episodeDate = $workflow.staticData.episodeDate;\nconst script = $workflow.staticData.script || '';\nconst chunkCount = $workflow.staticData.chunkCount || 0;\nconst wordCount = $workflow.staticData.wordCount || 0;\nconst totalChars = $workflow.staticData.totalElevenLabsChars || 0;\nconst fileName = $workflow.staticData.fileName || 'source.pdf';\n\nconst outputBase = $env.OUTPUT_LOCAL_PATH || path.join('C:\\\\Users\\\\fores\\\\melvin\\\\podcast-n8n', 'output');\nconst outputDir = path.join(outputBase, episodeDate);\nfs.mkdirSync(outputDir, { recursive: true });\n\n// Get episode duration\nlet durationSeconds = 0;\nconst episodeSrc = path.join(os.tmpdir(), 'episode.mp3');\ntry {\n  const dur = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"${episodeSrc}\"`, { encoding: 'utf8', stdio: 'pipe' }).trim();\n  durationSeconds = parseFloat(dur) || 0;\n} catch(e) {}\n\nconst durationMin = Math.floor(durationSeconds / 60);\nconst durationSec = Math.round(durationSeconds % 60);\nconst durationFormatted = `${durationMin}m ${durationSec}s`;\n\n// Cost estimate\nconst elevenLabsCost = (totalChars * 0.0002).toFixed(2);\nconst totalCost = (parseFloat(elevenLabsCost) + 0.01).toFixed(2);\n\n// Copy episode MP3\nfs.copyFileSync(episodeSrc, path.join(outputDir, 'episode.mp3'));\n\n// Write script.md\nfs.writeFileSync(path.join(outputDir, 'script.md'), script, 'utf8');\n\n// Write script_chunks.json\nconst chunks = Array.from({ length: chunkCount }, (_, i) => ({ chunkIndex: i }));\nfs.writeFileSync(path.join(outputDir, 'script_chunks.json'), JSON.stringify(chunks, null, 2), 'utf8');\n\n// Write metadata.json\nconst metadata = {\n  timestamp: new Date().toISOString(),\n  episodeDate,\n  sourcePdf: fileName,\n  scriptWordCount: wordCount,\n  chunkCount,\n  totalElevenLabsChars: totalChars,\n  voiceId: $env.ELEVENLABS_VOICE_ID,\n  modelId: 'eleven_turbo_v2_5',\n  scriptModel: 'gemini-2.5-flash',\n  durationSeconds: Math.round(durationSeconds),\n  durationFormatted,\n  estimatedCostAud: parseFloat(totalCost),\n  elevenLabsCostAud: parseFloat(elevenLabsCost),\n  geminiCostAud: 0.01\n};\nfs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2), 'utf8');\n\nconsole.log(`Output saved to: ${outputDir}`);\nconsole.log(`Duration: ${durationFormatted} | Cost: AUD $${totalCost} | Words: ${wordCount}`);\n\nreturn [{ json: { outputDir, episodeDate, durationFormatted, estimatedCostAud: parseFloat(totalCost), wordCount } }];"
+      }
+    },
+    {
+      "id": "local-0017",
+      "name": "Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [3100, 520],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-status",
+              "name": "status",
+              "value": "complete",
+              "type": "string"
+            },
+            {
+              "id": "assign-output",
+              "name": "outputDir",
+              "value": "={{ $json.outputDir }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-duration",
+              "name": "duration",
+              "value": "={{ $json.durationFormatted }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-cost",
+              "name": "estimatedCostAud",
+              "value": "={{ $json.estimatedCostAud }}",
+              "type": "number"
+            },
+            {
+              "id": "assign-words",
+              "name": "wordCount",
+              "value": "={{ $json.wordCount }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Podcast Trigger (Local)": {
+      "main": [[{"node": "Read Local PDF", "type": "main", "index": 0}]]
+    },
+    "Read Local PDF": {
+      "main": [[{"node": "Extract PDF Text", "type": "main", "index": 0}]]
+    },
+    "Extract PDF Text": {
+      "main": [[{"node": "Build Gemini Prompt", "type": "main", "index": 0}]]
+    },
+    "Build Gemini Prompt": {
+      "main": [[{"node": "Generate Script (Gemini)", "type": "main", "index": 0}]]
+    },
+    "Generate Script (Gemini)": {
+      "main": [[{"node": "Parse Script Response", "type": "main", "index": 0}]]
+    },
+    "Parse Script Response": {
+      "main": [[{"node": "Validate Script Length", "type": "main", "index": 0}]]
+    },
+    "Validate Script Length": {
+      "main": [[{"node": "Chunk Script", "type": "main", "index": 0}]]
+    },
+    "Chunk Script": {
+      "main": [[{"node": "Validate Chunks", "type": "main", "index": 0}]]
+    },
+    "Validate Chunks": {
+      "main": [[{"node": "Init TTS State", "type": "main", "index": 0}]]
+    },
+    "Init TTS State": {
+      "main": [[{"node": "Loop Over Chunks", "type": "main", "index": 0}]]
+    },
+    "Loop Over Chunks": {
+      "main": [
+        [{"node": "ElevenLabs TTS", "type": "main", "index": 0}],
+        [{"node": "Write Concat List", "type": "main", "index": 0}]
+      ]
+    },
+    "ElevenLabs TTS": {
+      "main": [[{"node": "Save Chunk & Update IDs", "type": "main", "index": 0}]]
+    },
+    "Save Chunk & Update IDs": {
+      "main": [[{"node": "Loop Over Chunks", "type": "main", "index": 0}]]
+    },
+    "Write Concat List": {
+      "main": [[{"node": "FFmpeg Concat", "type": "main", "index": 0}]]
+    },
+    "FFmpeg Concat": {
+      "main": [[{"node": "Save Output Locally", "type": "main", "index": 0}]]
+    },
+    "Save Output Locally": {
+      "main": [[{"node": "Done", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [],
+  "pinData": {}
+}
