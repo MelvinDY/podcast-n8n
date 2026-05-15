@@ -1,0 +1,12 @@
+# Secrets
+.env
+
+# Audio / generated output
+*.mp3
+*.mp4
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
